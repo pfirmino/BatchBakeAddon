@@ -1,13 +1,3 @@
-bl_info = {
-    "name": "Batch Bake Addon",
-    "author": "Pietro3DArtist",
-    "version": (1, 2),
-    "blender": (5, 0, 0),
-    "location": "Render Properties > Batch Bake",
-    "description": "Batch bake from high to low using cage meshes with customizable options.",
-    "category": "Bake",
-}
-
 import bpy
 import os
 
@@ -33,28 +23,6 @@ BAKE_ENUM_MAP = {
     "height": "POSITION",  # Approximate
 }
 
-class BatchBakeProperties(bpy.types.PropertyGroup):
-    image_name: bpy.props.StringProperty(name="Image Base Name", default="baked_texture")
-    image_format: bpy.props.EnumProperty(
-        name="Image Format",
-        items=[
-            ("PNG", "PNG", ""),
-            ("TIFF", "TIFF", ""),
-            ("OPEN_EXR", "OpenEXR", ""),
-        ],
-        default="PNG",
-    )
-    resolution_x: bpy.props.IntProperty(name="Width", default=2048, min=64)
-    resolution_y: bpy.props.IntProperty(name="Height", default=2048, min=64)
-    output_path: bpy.props.StringProperty(name="Output Path", subtype='DIR_PATH')
-    bake_margin: bpy.props.IntProperty(name="Bake Margin", default=2, min=0)
-
-    collection_low: bpy.props.PointerProperty(name="Low Collection", type=bpy.types.Collection)
-    collection_high: bpy.props.PointerProperty(name="High Collection", type=bpy.types.Collection)
-    collection_cage: bpy.props.PointerProperty(name="Cage Collection", type=bpy.types.Collection)
-
-    for bt in BAKE_TYPES:
-        exec(f"bake_{bt[0]}: bpy.props.BoolProperty(name=\"{bt[1]}\", default=False)")
 
 class BATCHBAKE_PT_panel(bpy.types.Panel):
     bl_label = "Batch Bake"
@@ -103,8 +71,15 @@ class BATCHBAKE_OT_execute(bpy.types.Operator):
             return {'CANCELLED'}
 
         to_bake = [bt[0] for bt in BAKE_TYPES if getattr(props, f"bake_{bt[0]}")]
+        if not to_bake:
+            self.report({'ERROR'}, "No bake channels selected")
+            return {'CANCELLED'}
 
-        low_list = list(low_objs.objects)
+        low_list = [obj for obj in low_objs.objects if obj.type == 'MESH']
+        if not low_list:
+            self.report({'ERROR'}, "No mesh objects found in low collection")
+            return {'CANCELLED'}
+
         total_meshes = len(low_list)
         wm.progress_begin(0, total_meshes * len(to_bake))
 
@@ -178,7 +153,13 @@ class BATCHBAKE_OT_execute(bpy.types.Operator):
                 step += 1
                 wm.progress_update(step)
 
-            img.filepath_raw = os.path.join(props.output_path, f"{props.image_name}_{channel}.{props.image_format.lower()}")
+            ext_map = {
+                "PNG": "png",
+                "TIFF": "tiff",
+                "OPEN_EXR": "exr",
+            }
+            output_ext = ext_map.get(props.image_format, props.image_format.lower())
+            img.filepath_raw = os.path.join(props.output_path, f"{props.image_name}_{channel}.{output_ext}")
             img.file_format = props.image_format
             img.save()
 
@@ -186,21 +167,3 @@ class BATCHBAKE_OT_execute(bpy.types.Operator):
         self.report({'INFO'}, "Baking complete.")
         return {'FINISHED'}
 
-classes = (
-    BatchBakeProperties,
-    BATCHBAKE_PT_panel,
-    BATCHBAKE_OT_execute,
-)
-
-def register():
-    for cls in classes:
-        bpy.utils.register_class(cls)
-    bpy.types.Scene.batch_bake_props = bpy.props.PointerProperty(type=BatchBakeProperties)
-
-def unregister():
-    for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
-    del bpy.types.Scene.batch_bake_props
-
-if __name__ == "__main__":
-    register()
