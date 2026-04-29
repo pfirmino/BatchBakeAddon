@@ -93,6 +93,14 @@ class BATCHBAKE_OT_execute(bpy.types.Operator):
                 alpha=True,
                 float_buffer=True if props.image_format == "OPEN_EXR" else False
             )
+            img.generated_type = 'BLANK'
+            img.generated_color = (0.0, 0.0, 0.0, 0.0)
+            img.use_alpha = True
+            img.alpha_mode = 'STRAIGHT'
+            img.colorspace_settings.name = 'Raw'
+            img.use_fake_user = True
+            img.file_format = props.image_format
+            img.pixels.foreach_set([0.0] * len(img.pixels))
 
             for i, low_obj in enumerate(low_list):
                 name_base = low_obj.name.removesuffix(".low")
@@ -116,10 +124,14 @@ class BATCHBAKE_OT_execute(bpy.types.Operator):
                 high_obj.hide_render = False
                 cage_obj.hide_render = False
 
+                if bpy.ops.object.mode_set.poll():
+                    bpy.ops.object.mode_set(mode='OBJECT')
+
                 bpy.ops.object.select_all(action='DESELECT')
-                bpy.context.view_layer.objects.active = low_obj
                 low_obj.select_set(True)
                 high_obj.select_set(True)
+                bpy.context.view_layer.objects.active = low_obj
+                bpy.context.view_layer.update()
 
                 mat = low_obj.data.materials[0] if low_obj.data.materials else None
                 if not mat:
@@ -133,18 +145,26 @@ class BATCHBAKE_OT_execute(bpy.types.Operator):
                 img_node = nt.nodes.get("BakedImage") or nt.nodes.new("ShaderNodeTexImage")
                 img_node.name = "BakedImage"
                 img_node.image = img
+                for node in nt.nodes:
+                    node.select = False
+                img_node.select = True
                 nt.nodes.active = img_node
 
                 self.report({'INFO'}, f"Baking ({i+1}/{total_meshes}) {low_obj.name} | Channel: {channel}")
                 print(f"[{i+1}/{total_meshes}] Baking {low_obj.name} for {channel}")
 
-                bpy.ops.object.bake(
+                result = bpy.ops.object.bake(
                     type=BAKE_ENUM_MAP[channel],
+                    target='IMAGE_TEXTURES',
+                    save_mode='INTERNAL',
+                    use_selected_to_active=True,
                     use_cage=True,
                     cage_object=cage_obj.name,
                     margin=props.bake_margin,
-                    margin_type='EXTEND'
+                    margin_type='EXTEND',
+                    use_clear=False
                 )
+                print(f"Bake op result: {result}")
 
                 # Restore original visibility
                 for obj, visibility in visibility_cache.items():
@@ -153,13 +173,7 @@ class BATCHBAKE_OT_execute(bpy.types.Operator):
                 step += 1
                 wm.progress_update(step)
 
-            ext_map = {
-                "PNG": "png",
-                "TIFF": "tiff",
-                "OPEN_EXR": "exr",
-            }
-            output_ext = ext_map.get(props.image_format, props.image_format.lower())
-            img.filepath_raw = os.path.join(props.output_path, f"{props.image_name}_{channel}.{output_ext}")
+            img.filepath_raw = os.path.join(props.output_path, f"{props.image_name}_{channel}.{props.image_format.lower()}")
             img.file_format = props.image_format
             img.save()
 

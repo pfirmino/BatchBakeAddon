@@ -4,7 +4,7 @@ from .batch_bake import BAKE_TYPES, BATCHBAKE_PT_panel, BATCHBAKE_OT_execute
 bl_info = {
     "name": "Batch Bake Addon",
     "author": "Pietro3DArtist",
-    "version": (1, 2),
+    "version": (1, 2, 1),
     "blender": (5, 0, 0),
     "location": "Render Properties > Batch Bake",
     "description": "Batch bake from high to low using cage meshes with customizable options.",
